@@ -52,6 +52,7 @@ public struct JellyfinLibrary: Codable, Equatable, Sendable {
 public enum LibraryCollectionType: String, Codable, Equatable, Sendable {
     case movies
     case tvshows = "tvshows"
+    case music
     case unknown
 
     public init(from decoder: Decoder) throws {

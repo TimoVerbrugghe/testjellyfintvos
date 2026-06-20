@@ -218,6 +218,75 @@ import Testing
     }
 }
 
+@Test func visibleNavigationItemsDependOnLibraryContentTypes() async throws {
+    let state = JellyfinAppState(
+        launchState: .signedIn,
+        libraries: [
+            JellyfinLibrary(id: "movies", name: "Movies", collectionType: .movies),
+            JellyfinLibrary(id: "music", name: "Music", collectionType: .music)
+        ]
+    )
+
+    #expect(state.visibleNavigationItems == [.home, .movies, .music, .settings])
+}
+
+@Test func onboardingStateTransitionsThroughDiscoverySelectionAndSignIn() async throws {
+    var state = JellyfinAppState()
+    let localServer = DiscoveredServer(
+        id: "1",
+        name: "Local",
+        address: URL(string: "https://local.example.com")!
+    )
+
+    state.beginDiscovery()
+    #expect(state.launchState == .signedOut)
+    #expect(state.onboardingStep == .discoveringServers)
+
+    state.applyDiscoveredServers([localServer])
+    #expect(state.onboardingStep == .selectServer)
+    #expect(state.discoveredServers == [localServer])
+
+    state.selectServer(localServer)
+    #expect(state.onboardingStep == .signIn)
+    #expect(state.selectedServer == localServer)
+
+    state.completeSignIn(
+        session: JellyfinSession(accessToken: "token", userID: "user", deviceID: "device"),
+        libraries: [JellyfinLibrary(id: "movies", name: "Movies", collectionType: .movies)]
+    )
+    #expect(state.launchState == .signedIn)
+    #expect(state.visibleNavigationItems == [.home, .movies, .settings])
+}
+
+@Test func libraryFilteringRecognizesMusicLibraries() async throws {
+    let state = JellyfinAppState(
+        libraries: [
+            JellyfinLibrary(id: "music-2", name: "Albums", collectionType: .music),
+            JellyfinLibrary(id: "shows-1", name: "Shows", collectionType: .tvshows),
+            JellyfinLibrary(id: "music-1", name: "Artists", collectionType: .music)
+        ]
+    )
+
+    #expect(state.hasLibrary(of: .music))
+    #expect(state.libraries(for: .music).map(\.name) == ["Albums", "Artists"])
+}
+
+@Test func alphabeticalGroupingBuildsLetterIndexForPosterItems() async throws {
+    let browser = JellyfinPosterBrowser()
+    let sections = browser.sections(
+        for: [
+            JellyfinPosterItem(id: "1", title: "Zebra"),
+            JellyfinPosterItem(id: "2", title: "alpha"),
+            JellyfinPosterItem(id: "3", title: "007"),
+            JellyfinPosterItem(id: "4", title: "!special")
+        ]
+    )
+
+    #expect(sections.map(\.title) == ["#", "0", "A", "Z"])
+    #expect(sections.first?.items.map(\.title) == ["!special"])
+    #expect(browser.indexTitles(for: sections.flatMap(\.items)) == ["#", "0", "A", "Z"])
+}
+
 private func makeClient() -> JellyfinClient {
     JellyfinClient(
         server: JellyfinServer(baseURL: URL(string: "https://demo.jellyfin.org/")!),
