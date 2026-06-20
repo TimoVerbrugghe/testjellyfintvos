@@ -123,13 +123,24 @@ public struct JellyfinBrowserView: View {
                 OnboardingFlowView(model: model)
             }
         }
-        .alert("Status", isPresented: .constant(model.playbackErrorMessage != nil), actions: {
+        .alert("Status", isPresented: statusAlertPresented, actions: {
             Button("OK") {
                 model.playbackErrorMessage = nil
             }
         }, message: {
             Text(model.playbackErrorMessage ?? "")
         })
+    }
+
+    private var statusAlertPresented: Binding<Bool> {
+        Binding(
+            get: { model.playbackErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    model.playbackErrorMessage = nil
+                }
+            }
+        )
     }
 }
 

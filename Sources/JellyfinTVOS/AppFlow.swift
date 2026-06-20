@@ -145,7 +145,7 @@ public struct JellyfinAppState: Equatable, Sendable {
         self.manualServerAddress = manualServerAddress
         self.signInMethod = signInMethod
         self.session = session
-        self.libraries = libraries.sorted(using: JellyfinLibrary.nameComparator)
+        self.libraries = libraries.sorted(by: librarySort)
         self.homeContent = homeContent
         self.posterCatalog = posterCatalog
         self.selectedNavigationItem = selectedNavigationItem
@@ -236,7 +236,7 @@ public struct JellyfinAppState: Equatable, Sendable {
         posterCatalog: JellyfinPosterCatalog = JellyfinPosterCatalog()
     ) {
         self.session = session
-        self.libraries = libraries.sorted(using: JellyfinLibrary.nameComparator)
+        self.libraries = libraries.sorted(by: librarySort)
         self.homeContent = homeContent
         self.posterCatalog = posterCatalog
         launchState = .signedIn
@@ -245,7 +245,7 @@ public struct JellyfinAppState: Equatable, Sendable {
     }
 
     public mutating func updateLibraries(_ libraries: [JellyfinLibrary]) {
-        self.libraries = libraries.sorted(using: JellyfinLibrary.nameComparator)
+        self.libraries = libraries.sorted(by: librarySort)
         normalizeSelection()
     }
 
@@ -284,14 +284,14 @@ public struct JellyfinPosterBrowser: Sendable {
     public init() {}
 
     public func sections(for items: [JellyfinPosterItem]) -> [JellyfinPosterSection] {
-        let grouped = Dictionary(grouping: items.sorted(using: JellyfinPosterItem.titleComparator)) { item in
+        let grouped = Dictionary(grouping: items.sorted(by: posterSort)) { item in
             sectionTitle(for: item.title)
         }
 
         return grouped.keys.sorted().map { key in
             JellyfinPosterSection(
                 title: key,
-                items: grouped[key, default: []].sorted(using: JellyfinPosterItem.titleComparator)
+                items: grouped[key, default: []].sorted(by: posterSort)
             )
         }
     }
@@ -310,18 +310,12 @@ public struct JellyfinPosterBrowser: Sendable {
             ? String(firstScalar).uppercased()
             : "#"
     }
+
+    private func posterSort(lhs: JellyfinPosterItem, rhs: JellyfinPosterItem) -> Bool {
+        lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
 }
 
-private extension JellyfinLibrary {
-    static let nameComparator: SortComparator = KeyPathComparator(
-        \JellyfinLibrary.name,
-        comparator: String.StandardComparator(.localizedStandard)
-    )
-}
-
-private extension JellyfinPosterItem {
-    static let titleComparator: SortComparator = KeyPathComparator(
-        \JellyfinPosterItem.title,
-        comparator: String.StandardComparator(.localizedStandard)
-    )
+private func librarySort(lhs: JellyfinLibrary, rhs: JellyfinLibrary) -> Bool {
+    lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
 }
