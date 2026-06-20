@@ -166,10 +166,14 @@ public struct JellyfinSignInClient: Sendable {
     }
 
     public func makeQuickConnectConnectRequest(secret: String) throws -> URLRequest {
-        var request = URLRequest(url: try makeURL(path: "/QuickConnect/Connect"))
+        var request = URLRequest(
+            url: try makeURL(
+                path: "/QuickConnect/Connect",
+                queryItems: [URLQueryItem(name: "Secret", value: secret)]
+            )
+        )
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.url = try makeURL(path: "/QuickConnect/Connect", queryItems: [URLQueryItem(name: "Secret", value: secret)])
         return request
     }
 

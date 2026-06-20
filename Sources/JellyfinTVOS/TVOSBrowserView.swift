@@ -15,9 +15,12 @@ public final class JellyfinAppModel: ObservableObject {
     @Published public var libraries: [JellyfinLibrary] = []
     @Published public var selectedLibrary: JellyfinLibrary?
     @Published public var selectedItem: JellyfinItem?
+    @Published public var selectedSeason: JellyfinSeason?
+    @Published public var selectedEpisode: JellyfinEpisode?
     @Published public var seasons: [JellyfinSeason] = []
     @Published public var episodes: [JellyfinEpisode] = []
     @Published public var pendingPlayback: PlaybackRequest?
+    @Published public var playbackErrorMessage: String?
 
     private let catalogClient: JellyfinCatalogClient
     private let playbackBuilder: PlaybackRequestBuilder
@@ -37,13 +40,27 @@ public final class JellyfinAppModel: ObservableObject {
         selectedItem = item
         switch catalogClient.nextSelection(for: item, seasons: seasons, episodes: episodes) {
         case .readyToPlay:
-            pendingPlayback = try? playbackBuilder.makeRequest(for: item)
+            do {
+                pendingPlayback = try playbackBuilder.makeRequest(for: item)
+                playbackErrorMessage = nil
+            } catch {
+                playbackErrorMessage = String(describing: error)
+            }
         case .seasonList(_, let seasons):
             self.seasons = seasons
             self.episodes = []
         case .episodeList(_, _, let episodes):
             self.episodes = episodes
         }
+    }
+
+    public func select(season: JellyfinSeason) {
+        selectedSeason = season
+        selectedEpisode = nil
+    }
+
+    public func select(episode: JellyfinEpisode) {
+        selectedEpisode = episode
     }
 }
 
@@ -76,7 +93,9 @@ public struct JellyfinBrowserView: View {
                 if !model.seasons.isEmpty {
                     Section("Seasons") {
                         ForEach(model.seasons, id: \.id) { season in
-                            Text(season.name)
+                            Button(season.name) {
+                                model.select(season: season)
+                            }
                         }
                     }
                 }
@@ -84,8 +103,16 @@ public struct JellyfinBrowserView: View {
                 if !model.episodes.isEmpty {
                     Section("Episodes") {
                         ForEach(model.episodes, id: \.id) { episode in
-                            Text(episode.name)
+                            Button(episode.name) {
+                                model.select(episode: episode)
+                            }
                         }
+                    }
+                }
+
+                if let playbackErrorMessage = model.playbackErrorMessage {
+                    Section("Playback") {
+                        Text(playbackErrorMessage)
                     }
                 }
             }
