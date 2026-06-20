@@ -88,7 +88,8 @@ final class JellyfinPlayerViewModel: ObservableObject {
 
         let timedMarkers = chapters.enumerated().map { index, chapter in
             let nextChapterStart = chapters.indices.contains(index + 1) ? chapters[index + 1].startTime : nil
-            let endTime = max(chapter.endTime ?? nextChapterStart ?? (chapter.startTime + 1), chapter.startTime + 1)
+            let minimumChapterEndTime = chapter.startTime + 1
+            let endTime = max(chapter.endTime ?? nextChapterStart ?? minimumChapterEndTime, minimumChapterEndTime)
             let timeRange = CMTimeRangeFromTimeToTime(
                 start: CMTime(seconds: chapter.startTime, preferredTimescale: 600),
                 end: CMTime(seconds: endTime, preferredTimescale: 600)
