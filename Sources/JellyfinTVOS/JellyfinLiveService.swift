@@ -54,7 +54,7 @@ public struct JellyfinLiveService: Sendable {
     public func validateServer(
         url: URL,
         deviceID: String,
-        appVersion: String = "1.0.0"
+        appVersion: String = JellyfinTVOS.appVersion
     ) async throws -> DiscoveredServer {
         let server = JellyfinServer(baseURL: url)
         let client = JellyfinSignInClient(server: server, deviceID: deviceID, appVersion: appVersion)
@@ -71,7 +71,7 @@ public struct JellyfinLiveService: Sendable {
         server: DiscoveredServer,
         credentials: UserCredentials,
         deviceID: String,
-        appVersion: String = "1.0.0"
+        appVersion: String = JellyfinTVOS.appVersion
     ) async throws -> JellyfinSession {
         let client = JellyfinSignInClient(
             server: JellyfinServer(baseURL: server.address),
@@ -91,7 +91,7 @@ public struct JellyfinLiveService: Sendable {
     public func beginQuickConnect(
         server: DiscoveredServer,
         deviceID: String,
-        appVersion: String = "1.0.0"
+        appVersion: String = JellyfinTVOS.appVersion
     ) async throws -> QuickConnectCode {
         let client = JellyfinSignInClient(
             server: JellyfinServer(baseURL: server.address),
@@ -106,7 +106,7 @@ public struct JellyfinLiveService: Sendable {
         server: DiscoveredServer,
         secret: String,
         deviceID: String,
-        appVersion: String = "1.0.0",
+        appVersion: String = JellyfinTVOS.appVersion,
         pollIntervalNanoseconds: UInt64 = 2_000_000_000,
         maxAttempts: Int = 150
     ) async throws -> JellyfinSession {

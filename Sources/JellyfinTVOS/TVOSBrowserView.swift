@@ -22,7 +22,7 @@ public final class JellyfinAppModel: ObservableObject {
         appState: JellyfinAppState = JellyfinAppState(),
         liveService: JellyfinLiveService = JellyfinLiveService(),
         deviceID: String? = nil,
-        appVersion: String = "1.0.0"
+        appVersion: String = JellyfinTVOS.appVersion
     ) {
         self.catalogClient = catalogClient
         self.playbackBuilder = playbackBuilder

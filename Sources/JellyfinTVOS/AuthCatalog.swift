@@ -125,7 +125,7 @@ public struct JellyfinSignInClient: Sendable {
     public let deviceID: String
     public let appVersion: String
 
-    public init(server: JellyfinServer, deviceID: String, appVersion: String = "1.0.0") {
+    public init(server: JellyfinServer, deviceID: String, appVersion: String = JellyfinTVOS.appVersion) {
         self.server = server
         self.deviceID = deviceID
         self.appVersion = appVersion

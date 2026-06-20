@@ -21,7 +21,7 @@ public struct JellyfinSession: Equatable, Sendable {
         accessToken: String,
         userID: String,
         deviceID: String,
-        appVersion: String = "1.0.0"
+        appVersion: String = JellyfinTVOS.appVersion
     ) {
         self.accessToken = accessToken
         self.userID = userID
