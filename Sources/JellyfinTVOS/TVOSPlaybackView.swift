@@ -110,7 +110,7 @@ final class JellyfinPlayerViewModel: ObservableObject {
         item.value = value as NSString
         item.extendedLanguageTag = "und"
         guard let copiedItem = item.copy() as? AVMetadataItem else {
-            preconditionFailure("Failed to create metadata item for \(identifier.rawValue). Check the playback presentation metadata being passed into JellyfinPlaybackView and retry.")
+            preconditionFailure("Failed to create metadata item for \(identifier.rawValue). Verify the playback title, subtitle, overview, and chapter metadata values before presenting JellyfinPlaybackView.")
         }
 
         return copiedItem
@@ -198,7 +198,7 @@ private struct NativeJellyfinPlayerView: UIViewControllerRepresentable {
             characteristic: .legible,
         emptyStateTitle: model.request.availableSubtitles.isEmpty
             ? "This video has no subtitle tracks"
-            : "Subtitle options cannot be loaded right now"
+        : "Subtitle tracks are temporarily unavailable for this stream"
         )
     }
 
