@@ -312,7 +312,7 @@ public struct PlaybackRequestBuilder: Sendable {
         let subtitle = candidate.subtitle
         let presentation = PlaybackPresentation(
             title: item.name,
-            subtitle: item.type.rawValue,
+            subtitle: item.type.presentationSubtitle,
             badges: makePresentationBadges(
                 for: mediaSource,
                 subtitle: subtitle,
@@ -401,5 +401,18 @@ public struct PlaybackRequestBuilder: Sendable {
         var badges = [mediaSource.container.uppercased(), mediaSource.videoRange.rawValue]
         badges.append(profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle) ? "Direct Play" : "Transcode")
         return badges
+    }
+}
+
+private extension JellyfinItemType {
+    var presentationSubtitle: String {
+        switch self {
+        case .movie:
+            "Feature Film"
+        case .episode:
+            "TV Episode"
+        case .series:
+            "Series"
+        }
     }
 }

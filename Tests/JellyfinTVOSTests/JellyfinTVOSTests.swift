@@ -59,7 +59,7 @@ import Testing
     #expect(request.subtitle?.codec == .ass)
     #expect(request.availableSubtitles.map(\.index) == [3])
     #expect(request.presentation.title == "Movie")
-    #expect(request.presentation.subtitle == "Movie")
+    #expect(request.presentation.subtitle == "Feature Film")
     #expect(request.presentation.badges.contains("Direct Play"))
 }
 

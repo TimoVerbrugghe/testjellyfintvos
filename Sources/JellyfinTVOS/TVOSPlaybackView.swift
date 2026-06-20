@@ -108,7 +108,11 @@ final class JellyfinPlayerViewModel: ObservableObject {
         item.identifier = identifier
         item.value = value as NSString
         item.extendedLanguageTag = "und"
-        return item.copy() as! AVMetadataItem
+        guard let copiedItem = item.copy() as? AVMetadataItem else {
+            preconditionFailure("AVMutableMetadataItem copy did not produce an AVMetadataItem for identifier \(identifier.rawValue).")
+        }
+
+        return copiedItem
     }
 }
 
