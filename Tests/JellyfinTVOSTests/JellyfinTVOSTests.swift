@@ -84,6 +84,38 @@ import Testing
     #expect(request.url.query?.contains("SubtitleMethod=External") == true)
 }
 
+@Test func playbackPrefersBestDirectPlayableMediaSource() async throws {
+    let builder = PlaybackRequestBuilder(client: makeClient())
+    let item = JellyfinItem(
+        id: "item-3",
+        name: "Movie",
+        type: .movie,
+        mediaSources: [
+            MediaSource(
+                id: "source-a",
+                container: "mkv",
+                videoCodec: "av1",
+                videoRange: .hdr10,
+                supportsDirectPlay: false,
+                subtitleStreams: []
+            ),
+            MediaSource(
+                id: "source-b",
+                container: "mp4",
+                videoCodec: "hevc",
+                videoRange: .dolbyVisionProfile5,
+                supportsDirectPlay: true,
+                subtitleStreams: []
+            )
+        ]
+    )
+
+    let request = try builder.makeRequest(for: item)
+
+    #expect(request.mode == .directPlay)
+    #expect(request.url.query?.contains("mediaSourceId=source-b") == true)
+}
+
 @Test func credentialAuthenticationUsesJellyfinPayloadShape() async throws {
     let signInClient = JellyfinSignInClient(
         server: JellyfinServer(baseURL: URL(string: "https://demo.jellyfin.org/")!),

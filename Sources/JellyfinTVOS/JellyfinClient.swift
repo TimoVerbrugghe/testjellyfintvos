@@ -103,6 +103,17 @@ public enum JellyfinClientError: Error, Equatable {
     case missingMediaSource
 }
 
+extension JellyfinClientError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            "The Jellyfin server URL is invalid."
+        case .missingMediaSource:
+            "This item does not have a playable media source."
+        }
+    }
+}
+
 private extension JellyfinClient.Endpoint {
     var path: String {
         switch self {

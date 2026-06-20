@@ -224,11 +224,16 @@ public struct PlaybackRequestBuilder: Sendable {
         profile: PlaybackProfile = .nativeTVOS,
         subtitlePreferences: SubtitlePreferences = SubtitlePreferences()
     ) throws -> PlaybackRequest {
-        guard let mediaSource = item.mediaSources.first else {
+        guard let candidate = selectBestCandidate(
+            from: item.mediaSources,
+            profile: profile,
+            subtitlePreferences: subtitlePreferences
+        ) else {
             throw JellyfinClientError.missingMediaSource
         }
 
-        let subtitle = subtitlePreferences.selectSubtitle(from: mediaSource.subtitleStreams)
+        let mediaSource = candidate.mediaSource
+        let subtitle = candidate.subtitle
 
         if profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle) {
             return PlaybackRequest(
@@ -268,5 +273,34 @@ public struct PlaybackRequestBuilder: Sendable {
             url: try client.makeURL(for: .transcodedStream(item.id), queryItems: queryItems),
             subtitle: subtitle
         )
+    }
+
+    private func selectBestCandidate(
+        from mediaSources: [MediaSource],
+        profile: PlaybackProfile,
+        subtitlePreferences: SubtitlePreferences
+    ) -> (mediaSource: MediaSource, subtitle: SubtitleStream?)? {
+        mediaSources
+            .map { mediaSource in
+                let subtitle = subtitlePreferences.selectSubtitle(from: mediaSource.subtitleStreams)
+                let isDirectPlayable = profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle)
+                var score = isDirectPlayable ? 1_000 : 0
+                score += mediaSource.supportsDirectPlay ? 100 : 0
+                score += profile.supportedVideoRanges.contains(mediaSource.videoRange) ? 50 : 0
+                if let subtitle {
+                    score += profile.supportedSubtitleCodecs.contains(subtitle.codec) ? 25 : 5
+                }
+
+                return (mediaSource: mediaSource, subtitle: subtitle, score: score)
+            }
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score {
+                    return lhs.score > rhs.score
+                }
+
+                return lhs.mediaSource.id < rhs.mediaSource.id
+            }
+            .first
+            .map { ($0.mediaSource, $0.subtitle) }
     }
 }

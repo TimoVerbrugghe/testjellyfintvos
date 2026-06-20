@@ -44,7 +44,7 @@ public final class JellyfinAppModel: ObservableObject {
                 pendingPlayback = try playbackBuilder.makeRequest(for: item)
                 playbackErrorMessage = nil
             } catch {
-                playbackErrorMessage = String(describing: error)
+                playbackErrorMessage = error.localizedDescription
             }
         case .seasonList(_, let seasons):
             self.seasons = seasons
