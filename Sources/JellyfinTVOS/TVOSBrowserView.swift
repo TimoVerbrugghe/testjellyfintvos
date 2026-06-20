@@ -96,7 +96,7 @@ public struct JellyfinBrowserView: View {
     private func title(for method: JellyfinSignInMethod) -> String {
         switch method {
         case .autodiscovery:
-            "Autodiscover"
+            "Auto-discover"
         case .usernamePassword:
             "Username / Password"
         case .quickConnect:
