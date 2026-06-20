@@ -111,6 +111,8 @@ public struct SubtitlePreferences: Equatable, Sendable {
     }
 
     private func score(for stream: SubtitleStream) -> Int {
+        // Prioritize preferred language matches first, then accessibility
+        // variants like SDH, followed by subtitle codec preferences.
         var score = stream.isDefault ? 5 : 0
 
         if let languageIndex = preferredLanguages.firstIndex(of: stream.languageCode) {
