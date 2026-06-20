@@ -376,7 +376,7 @@ private struct ManualServerEntryScreen: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(model.appState.manualServerAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
+                .disabled(!model.appState.hasManualServerAddress || model.isWorking)
             }
         }
         .navigationTitle("Manual Setup")

@@ -167,6 +167,10 @@ public struct JellyfinAppState: Equatable, Sendable {
         return items
     }
 
+    public var hasManualServerAddress: Bool {
+        !trimmedManualServerAddress.isEmpty
+    }
+
     public func hasLibrary(of collectionType: LibraryCollectionType) -> Bool {
         libraries.contains { $0.collectionType == collectionType }
     }
@@ -207,8 +211,8 @@ public struct JellyfinAppState: Equatable, Sendable {
     }
 
     public func resolvedManualServer() throws -> DiscoveredServer {
-        let trimmed = manualServerAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        let trimmed = trimmedManualServerAddress
+        guard hasManualServerAddress else {
             throw JellyfinClientError.invalidURL
         }
 
@@ -287,6 +291,10 @@ public struct JellyfinAppState: Equatable, Sendable {
         if !visibleNavigationItems.contains(selectedNavigationItem) {
             selectedNavigationItem = .home
         }
+    }
+
+    private var trimmedManualServerAddress: String {
+        manualServerAddress.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
