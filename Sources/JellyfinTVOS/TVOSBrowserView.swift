@@ -5,18 +5,35 @@ import SwiftUI
 public final class JellyfinAppModel: ObservableObject {
     @Published public var appState: JellyfinAppState
     @Published public var playbackErrorMessage: String?
+    @Published public private(set) var isWorking = false
+    @Published public private(set) var isPollingQuickConnect = false
+    @Published public private(set) var quickConnectCode: QuickConnectCode?
 
     private let catalogClient: JellyfinCatalogClient
     private let playbackBuilder: PlaybackRequestBuilder
+    private let liveService: JellyfinLiveService
+    private let deviceID: String
+    private let appVersion: String
+    private var quickConnectTask: Task<Void, Never>?
 
     public init(
         catalogClient: JellyfinCatalogClient,
         playbackBuilder: PlaybackRequestBuilder,
-        appState: JellyfinAppState = JellyfinAppState()
+        appState: JellyfinAppState = JellyfinAppState(),
+        liveService: JellyfinLiveService = JellyfinLiveService(),
+        deviceID: String? = nil,
+        appVersion: String = "1.0.0"
     ) {
         self.catalogClient = catalogClient
         self.playbackBuilder = playbackBuilder
         self.appState = appState
+        self.liveService = liveService
+        self.deviceID = deviceID ?? playbackBuilder.client.session.deviceID
+        self.appVersion = appVersion
+    }
+
+    deinit {
+        quickConnectTask?.cancel()
     }
 
     public func beginDiscovery() {
@@ -35,9 +52,18 @@ public final class JellyfinAppModel: ObservableObject {
         appState.updateManualServerAddress(value)
     }
 
-    public func commitManualServer() {
+    public func commitManualServer() async {
+        isWorking = true
+        defer { isWorking = false }
+
         do {
-            try appState.commitManualServer()
+            let candidate = try appState.resolvedManualServer()
+            let validatedServer = try await liveService.validateServer(
+                url: candidate.address,
+                deviceID: deviceID,
+                appVersion: appVersion
+            )
+            appState.commitManualServer(validatedServer)
             playbackErrorMessage = nil
         } catch {
             playbackErrorMessage = error.localizedDescription
@@ -68,43 +94,104 @@ public final class JellyfinAppModel: ObservableObject {
         appState.updateSelectedNavigationItem(item)
     }
 
-    public func completePreviewSignIn() {
-        let server = appState.selectedServer?.address.absoluteString ?? "https://demo.jellyfin.org"
-        let session = JellyfinSession(accessToken: "preview-token", userID: "preview-user", deviceID: "preview-device")
-        let libraries = [
-            JellyfinLibrary(id: "movies", name: "Movies", collectionType: .movies),
-            JellyfinLibrary(id: "shows", name: "TV Shows", collectionType: .tvshows),
-            JellyfinLibrary(id: "music", name: "Music", collectionType: .music)
-        ]
-        var catalog = JellyfinPosterCatalog()
-        catalog.setItems(previewItems(prefix: "Movies", count: 12), for: "movies")
-        catalog.setItems(previewItems(prefix: "Series", count: 12), for: "shows")
-        catalog.setItems(previewItems(prefix: "Albums", count: 12), for: "music")
-        appState.completeSignIn(
-            session: session,
-            libraries: libraries,
-            homeContent: JellyfinHomeSectionContent(
-                upNext: previewItems(prefix: "Up Next", count: 10),
-                recentlyAddedTVShows: previewItems(prefix: "Recently Added Show", count: 10),
-                recentlyAddedMovies: previewItems(prefix: "Recently Added Movie", count: 10)
-            ),
-            posterCatalog: catalog
-        )
-        playbackErrorMessage = "Preview mode connected to \(server). Replace preview sign-in with live requests when wiring networking."
+    public func signIn(username: String, password: String) async {
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let server = try selectedServer()
+            let session = try await liveService.authenticate(
+                server: server,
+                credentials: UserCredentials(
+                    username: username.trimmingCharacters(in: .whitespacesAndNewlines),
+                    password: password
+                ),
+                deviceID: deviceID,
+                appVersion: appVersion
+            )
+            try await finishSignIn(server: server, session: session)
+            playbackErrorMessage = nil
+        } catch {
+            playbackErrorMessage = error.localizedDescription
+        }
+    }
+
+    public func startQuickConnect() async {
+        quickConnectTask?.cancel()
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let server = try selectedServer()
+            let code = try await liveService.beginQuickConnect(
+                server: server,
+                deviceID: deviceID,
+                appVersion: appVersion
+            )
+            quickConnectCode = code
+            isPollingQuickConnect = true
+            playbackErrorMessage = nil
+
+            quickConnectTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let session = try await self.liveService.completeQuickConnect(
+                        server: server,
+                        secret: code.secret,
+                        deviceID: self.deviceID,
+                        appVersion: self.appVersion
+                    )
+                    try await self.finishSignIn(server: server, session: session)
+                    await MainActor.run {
+                        self.isPollingQuickConnect = false
+                        self.quickConnectCode = nil
+                        self.playbackErrorMessage = nil
+                    }
+                } catch is CancellationError {
+                    await MainActor.run {
+                        self.isPollingQuickConnect = false
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.isPollingQuickConnect = false
+                        self.playbackErrorMessage = error.localizedDescription
+                    }
+                }
+            }
+        } catch {
+            isPollingQuickConnect = false
+            playbackErrorMessage = error.localizedDescription
+        }
     }
 
     public func signOut() {
+        quickConnectTask?.cancel()
+        quickConnectTask = nil
+        quickConnectCode = nil
+        isPollingQuickConnect = false
         appState.signOut()
     }
 
-    private func previewItems(prefix: String, count: Int) -> [JellyfinPosterItem] {
-        (1...count).map { index in
-            JellyfinPosterItem(
-                id: "\(prefix)-\(index)",
-                title: "\(prefix) \(index)",
-                subtitle: index.isMultiple(of: 2) ? "Jellyfin" : nil
-            )
+    private func selectedServer() throws -> DiscoveredServer {
+        if let selectedServer = appState.selectedServer {
+            return selectedServer
         }
+
+        return try appState.resolvedManualServer()
+    }
+
+    private func finishSignIn(server: DiscoveredServer, session: JellyfinSession) async throws {
+        let signedInContent = try await liveService.loadSignedInContent(
+            server: server,
+            session: session
+        )
+        appState.selectServer(server)
+        appState.completeSignIn(
+            session: session,
+            libraries: signedInContent.libraries,
+            homeContent: signedInContent.homeContent,
+            posterCatalog: signedInContent.posterCatalog
+        )
     }
 }
 
@@ -130,6 +217,17 @@ public struct JellyfinBrowserView: View {
         }, message: {
             Text(model.playbackErrorMessage ?? "")
         })
+        .overlay {
+            if model.isWorking {
+                ZStack {
+                    Color.black.opacity(0.2)
+                        .ignoresSafeArea()
+                    ProgressView("Connecting…")
+                        .padding(24)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                }
+            }
+        }
     }
 
     private var statusAlertPresented: Binding<Bool> {
@@ -273,9 +371,12 @@ private struct ManualServerEntryScreen: View {
 
             Section {
                 Button("Continue") {
-                    model.commitManualServer()
+                    Task {
+                        await model.commitManualServer()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(model.appState.manualServerAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
             }
         }
         .navigationTitle("Manual Setup")
@@ -286,7 +387,6 @@ private struct SignInScreen: View {
     @ObservedObject var model: JellyfinAppModel
     @State private var username = ""
     @State private var password = ""
-    @State private var quickConnectCode = ""
 
     var body: some View {
         Form {
@@ -316,19 +416,38 @@ private struct SignInScreen: View {
                         .autocorrectionDisabled()
                     SecureField("Password", text: $password)
                 case .quickConnect:
-                    TextField("Quick Connect Code", text: $quickConnectCode)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let quickConnectCode = model.quickConnectCode {
+                            Text(quickConnectCode.code)
+                                .font(.system(.title2, design: .monospaced).bold())
+                            Text("Open Jellyfin in another client, choose Quick Connect, and enter this code.")
+                                .foregroundStyle(.secondary)
+                            if model.isPollingQuickConnect {
+                                ProgressView("Waiting for approval…")
+                            }
+                        } else {
+                            Text("Generate a Quick Connect code, then approve this Apple TV from another Jellyfin client.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
 
             Section {
                 Button(connectButtonTitle) {
-                    model.completePreviewSignIn()
+                    Task {
+                        switch model.appState.signInMethod {
+                        case .autodiscovery, .usernamePassword:
+                            await model.signIn(username: username, password: password)
+                        case .quickConnect:
+                            await model.startQuickConnect()
+                        }
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(connectButtonDisabled)
             } footer: {
-                Text("This Swift package currently exposes request builders and view scaffolding, so the sign-in button completes a preview session until live networking is wired in.")
+                Text("Sign in with your live Jellyfin server credentials, or use Quick Connect to approve this Apple TV from another client.")
             }
         }
         .navigationTitle("Sign In")
@@ -339,7 +458,20 @@ private struct SignInScreen: View {
         case .autodiscovery, .usernamePassword:
             "Sign In"
         case .quickConnect:
-            "Connect with Quick Connect"
+            model.quickConnectCode == nil ? "Generate Quick Connect Code" : "Generate New Quick Connect Code"
+        }
+    }
+
+    private var connectButtonDisabled: Bool {
+        guard !model.isWorking else {
+            return true
+        }
+
+        switch model.appState.signInMethod {
+        case .autodiscovery, .usernamePassword:
+            username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty
+        case .quickConnect:
+            false
         }
     }
 }

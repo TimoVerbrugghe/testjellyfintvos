@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Testing
 @testable import JellyfinTVOS
 
@@ -287,9 +290,181 @@ import Testing
     #expect(browser.indexTitles(for: sections.flatMap(\.items)) == ["#", "0", "A", "Z"])
 }
 
+@Test func manualServerResolutionNormalizesAddressBeforeCommit() async throws {
+    var state = JellyfinAppState(manualServerAddress: "demo.jellyfin.org/")
+
+    let server = try state.resolvedManualServer()
+    state.commitManualServer(server)
+
+    #expect(server.address.absoluteString == "https://demo.jellyfin.org")
+    #expect(state.selectedServer?.address.absoluteString == "https://demo.jellyfin.org")
+    #expect(state.onboardingStep == .signIn)
+}
+
+@Test func liveServiceValidatesAuthenticatesAndLoadsSignedInContent() async throws {
+    let baseURL = "https://jellyfin.example.com"
+    let responder = MockHTTPResponder(
+        responses: [
+            "\(baseURL)/System/Info/Public": [
+                makeJSONResponse(url: "\(baseURL)/System/Info/Public", body: #"{"ServerName":"Living Room Jellyfin"}"#)
+            ],
+            "\(baseURL)/Users/AuthenticateByName": [
+                makeJSONResponse(
+                    url: "\(baseURL)/Users/AuthenticateByName",
+                    body: #"{"AccessToken":"token-1","User":{"Id":"user-1"}}"#
+                )
+            ],
+            "\(baseURL)/Users/user-1/Views": [
+                makeJSONResponse(
+                    url: "\(baseURL)/Users/user-1/Views",
+                    body: #"{"Items":[{"Id":"movies","Name":"Movies","CollectionType":"movies"},{"Id":"shows","Name":"TV Shows","CollectionType":"tvshows"}]}"#
+                )
+            ],
+            "\(baseURL)/Users/user-1/Items/Resume?Limit=12": [
+                makeJSONResponse(
+                    url: "\(baseURL)/Users/user-1/Items/Resume?Limit=12",
+                    body: #"{"Items":[{"Id":"resume-1","Name":"Pilot","Type":"Episode","SeriesName":"Great Show"}]}"#
+                )
+            ],
+            "\(baseURL)/Users/user-1/Items/Latest?IncludeItemTypes=Series,Episode&Limit=12&GroupItems=true": [
+                makeJSONResponse(
+                    url: "\(baseURL)/Users/user-1/Items/Latest?IncludeItemTypes=Series,Episode&Limit=12&GroupItems=true",
+                    body: #"[{"Id":"show-1","Name":"Great Show","Type":"Series"}]"#
+                )
+            ],
+            "\(baseURL)/Users/user-1/Items/Latest?IncludeItemTypes=Movie&Limit=12&GroupItems=true": [
+                makeJSONResponse(
+                    url: "\(baseURL)/Users/user-1/Items/Latest?IncludeItemTypes=Movie&Limit=12&GroupItems=true",
+                    body: #"[{"Id":"movie-1","Name":"Movie Night","Type":"Movie","ProductionYear":2024}]"#
+                )
+            ],
+            "\(baseURL)/Users/user-1/Items?ParentId=movies&IncludeItemTypes=Movie&Recursive=true&Limit=200": [
+                makeJSONResponse(
+                    url: "\(baseURL)/Users/user-1/Items?ParentId=movies&IncludeItemTypes=Movie&Recursive=true&Limit=200",
+                    body: #"{"Items":[{"Id":"movie-a","Name":"Arrival","Type":"Movie"}]}"#
+                )
+            ],
+            "\(baseURL)/Users/user-1/Items?ParentId=shows&IncludeItemTypes=Series&Recursive=true&Limit=200": [
+                makeJSONResponse(
+                    url: "\(baseURL)/Users/user-1/Items?ParentId=shows&IncludeItemTypes=Series&Recursive=true&Limit=200",
+                    body: #"{"Items":[{"Id":"show-a","Name":"Severance","Type":"Series"}]}"#
+                )
+            ]
+        ]
+    )
+    let service = JellyfinLiveService(
+        transport: JellyfinHTTPTransport { request in
+            try await responder.send(request)
+        }
+    )
+
+    let server = try await service.validateServer(
+        url: URL(string: "\(baseURL)/")!,
+        deviceID: "device-1"
+    )
+    let session = try await service.authenticate(
+        server: server,
+        credentials: UserCredentials(username: "tim", password: "secret"),
+        deviceID: "device-1"
+    )
+    let content = try await service.loadSignedInContent(server: server, session: session)
+
+    #expect(server.name == "Living Room Jellyfin")
+    #expect(session.accessToken == "token-1")
+    #expect(content.libraries.map(\.id) == ["movies", "shows"])
+    #expect(content.homeContent.upNext.map(\.title) == ["Pilot"])
+    #expect(content.homeContent.recentlyAddedTVShows.map(\.title) == ["Great Show"])
+    #expect(content.homeContent.recentlyAddedMovies.first?.subtitle == "2024")
+    #expect(content.posterCatalog.items(for: "movies").map(\.title) == ["Arrival"])
+    #expect(content.posterCatalog.items(for: "shows").map(\.title) == ["Severance"])
+}
+
+@Test func quickConnectPollingRetriesPendingResponses() async throws {
+    let baseURL = "https://jellyfin.example.com"
+    let connectURL = "\(baseURL)/QuickConnect/Connect?Secret=secret-1"
+    let responder = MockHTTPResponder(
+        responses: [
+            "\(baseURL)/QuickConnect/Initiate": [
+                makeJSONResponse(
+                    url: "\(baseURL)/QuickConnect/Initiate",
+                    body: #"{"Code":"ABCD","Secret":"secret-1"}"#
+                )
+            ],
+            connectURL: [
+                makeStatusResponse(url: connectURL, statusCode: 401),
+                makeJSONResponse(
+                    url: connectURL,
+                    body: #"{"AccessToken":"token-quick","User":{"Id":"user-quick"}}"#
+                )
+            ]
+        ]
+    )
+    let service = JellyfinLiveService(
+        transport: JellyfinHTTPTransport { request in
+            try await responder.send(request)
+        }
+    )
+    let server = DiscoveredServer(
+        id: baseURL,
+        name: "Jellyfin",
+        address: URL(string: baseURL)!
+    )
+
+    let code = try await service.beginQuickConnect(server: server, deviceID: "device-1")
+    let session = try await service.completeQuickConnect(
+        server: server,
+        secret: code.secret,
+        deviceID: "device-1",
+        pollIntervalNanoseconds: 1,
+        maxAttempts: 3
+    )
+
+    #expect(code.code == "ABCD")
+    #expect(session.accessToken == "token-quick")
+    #expect(await responder.requestCount(for: connectURL) == 2)
+}
+
 private func makeClient() -> JellyfinClient {
     JellyfinClient(
         server: JellyfinServer(baseURL: URL(string: "https://demo.jellyfin.org/")!),
         session: JellyfinSession(accessToken: "token", userID: "user", deviceID: "device")
     )
+}
+
+private actor MockHTTPResponder {
+    private var responses: [String: [(Data, HTTPURLResponse)]]
+    private var requestCounts: [String: Int] = [:]
+
+    init(responses: [String: [(Data, HTTPURLResponse)]]) {
+        self.responses = responses
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let key = try #require(request.url?.absoluteString)
+        requestCounts[key, default: 0] += 1
+
+        guard var entries = responses[key], !entries.isEmpty else {
+            Issue.record("Missing mocked response for \(key)")
+            throw JellyfinLiveServiceError.invalidResponse
+        }
+
+        let response = entries.removeFirst()
+        responses[key] = entries
+        return response
+    }
+
+    func requestCount(for url: String) -> Int {
+        requestCounts[url, default: 0]
+    }
+}
+
+private func makeJSONResponse(url: String, statusCode: Int = 200, body: String) -> (Data, HTTPURLResponse) {
+    (
+        Data(body.utf8),
+        HTTPURLResponse(url: URL(string: url)!, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
+    )
+}
+
+private func makeStatusResponse(url: String, statusCode: Int) -> (Data, HTTPURLResponse) {
+    makeJSONResponse(url: url, statusCode: statusCode, body: "")
 }

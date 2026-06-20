@@ -206,7 +206,7 @@ public struct JellyfinAppState: Equatable, Sendable {
         manualServerAddress = value
     }
 
-    public mutating func commitManualServer() throws {
+    public func resolvedManualServer() throws -> DiscoveredServer {
         let trimmed = manualServerAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw JellyfinClientError.invalidURL
@@ -217,12 +217,22 @@ public struct JellyfinAppState: Equatable, Sendable {
             throw JellyfinClientError.invalidURL
         }
 
-        let server = DiscoveredServer(
+        return DiscoveredServer(
             id: url.absoluteString,
             name: url.host() ?? candidate,
             address: url
         )
-        selectServer(server)
+    }
+
+    public mutating func commitManualServer(_ server: DiscoveredServer) {
+        launchState = .signedOut
+        selectedServer = server
+        manualServerAddress = server.address.absoluteString
+        onboardingStep = .signIn
+    }
+
+    public mutating func commitManualServer() throws {
+        commitManualServer(try resolvedManualServer())
     }
 
     public mutating func updateSignInMethod(_ method: JellyfinSignInMethod) {

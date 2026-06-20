@@ -236,13 +236,31 @@ public struct JellyfinCatalogClient: Sendable {
     }
 
     public func makeLibraryItemsRequest(libraryID: String, include itemTypes: [JellyfinItemType]) throws -> URLRequest {
-        try client.makeRequest(
+        try makeLibraryItemsRequest(
+            libraryID: libraryID,
+            includeItemTypes: itemTypes.map(\.rawValue),
+            recursive: false
+        )
+    }
+
+    public func makeLibraryItemsRequest(
+        libraryID: String,
+        includeItemTypes: [String],
+        recursive: Bool,
+        limit: Int? = nil
+    ) throws -> URLRequest {
+        var queryItems = [
+            URLQueryItem(name: "ParentId", value: libraryID),
+            URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ",")),
+            URLQueryItem(name: "Recursive", value: recursive ? "true" : "false")
+        ]
+        if let limit {
+            queryItems.append(URLQueryItem(name: "Limit", value: String(limit)))
+        }
+
+        return try client.makeRequest(
             for: .userItems(client.session.userID),
-            queryItems: [
-                URLQueryItem(name: "ParentId", value: libraryID),
-                URLQueryItem(name: "IncludeItemTypes", value: itemTypes.map(\.rawValue).joined(separator: ",")),
-                URLQueryItem(name: "Recursive", value: "false")
-            ]
+            queryItems: queryItems
         )
     }
 
@@ -254,6 +272,24 @@ public struct JellyfinCatalogClient: Sendable {
         try client.makeRequest(
             for: .showEpisodes(seriesID),
             queryItems: [URLQueryItem(name: "SeasonId", value: seasonID)]
+        )
+    }
+
+    public func makeLatestRequest(includeItemTypes: [String], limit: Int = 12) throws -> URLRequest {
+        try client.makeRequest(
+            for: .latest(userID: client.session.userID),
+            queryItems: [
+                URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ",")),
+                URLQueryItem(name: "Limit", value: String(limit)),
+                URLQueryItem(name: "GroupItems", value: "true")
+            ]
+        )
+    }
+
+    public func makeResumeRequest(limit: Int = 12) throws -> URLRequest {
+        try client.makeRequest(
+            for: .resume(client.session.userID),
+            queryItems: [URLQueryItem(name: "Limit", value: String(limit))]
         )
     }
 

@@ -42,6 +42,7 @@ public struct JellyfinClient: Sendable {
         case userViews(String)
         case userItems(String)
         case latest(userID: String)
+        case resume(String)
         case item(String)
         case playbackInfo(String)
         case showSeasons(String)
@@ -125,6 +126,8 @@ private extension JellyfinClient.Endpoint {
             "/Users/\(userID)/Items"
         case .latest(let userID):
             "/Users/\(userID)/Items/Latest"
+        case .resume(let userID):
+            "/Users/\(userID)/Items/Resume"
         case .item(let itemID):
             "/Items/\(itemID)"
         case .playbackInfo(let itemID):
