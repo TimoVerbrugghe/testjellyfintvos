@@ -273,7 +273,7 @@ public struct PlaybackRequest: Equatable, Sendable {
         url: URL,
         subtitle: SubtitleStream? = nil,
         availableSubtitles: [SubtitleStream] = [],
-        presentation: PlaybackPresentation
+        presentation: PlaybackPresentation = PlaybackPresentation(title: "Now Playing")
     ) {
         self.mode = mode
         self.url = url

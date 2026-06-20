@@ -1,5 +1,6 @@
 #if canImport(AVKit) && canImport(SwiftUI) && os(tvOS)
 import AVKit
+import Foundation
 import SwiftUI
 
 @MainActor
@@ -90,7 +91,7 @@ final class JellyfinPlayerViewModel: ObservableObject {
         let timedMarkers = chapters.enumerated().map { index, chapter in
             let nextChapterStart = chapters.indices.contains(index + 1) ? chapters[index + 1].startTime : nil
             let endTime = max(chapter.endTime ?? nextChapterStart ?? (chapter.startTime + 1), chapter.startTime + 1)
-            let timeRange = CMTimeRange(
+            let timeRange = CMTimeRangeFromTimeToTime(
                 start: CMTime(seconds: chapter.startTime, preferredTimescale: 600),
                 end: CMTime(seconds: endTime, preferredTimescale: 600)
             )
@@ -291,9 +292,7 @@ private struct NativeJellyfinPlayerView: UIViewControllerRepresentable {
 
     @available(tvOS 16.0, *)
     private func disabledAction(title: String) -> UIAction {
-        let action = UIAction(title: title) { _ in }
-        action.attributes = [.disabled]
-        return action
+        UIAction(title: title, attributes: [.disabled]) { _ in }
     }
 
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
@@ -350,11 +349,11 @@ private struct CastAndCrewPanelView: View {
                     )
                 } else {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
-                        ForEach(Array(contributors.enumerated()), id: \.offset) { _, contributor in
+                        ForEach(Array(contributors.enumerated()), id: \.offset) { entry in
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(contributor.name)
+                                Text(entry.element.name)
                                     .font(.headline)
-                                Text(contributor.role)
+                                Text(entry.element.role)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
@@ -386,14 +385,14 @@ private struct ChaptersPanelView: View {
                     )
                     .frame(width: 520, alignment: .leading)
                 } else {
-                    ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
+                    ForEach(Array(chapters.enumerated()), id: \.offset) { entry in
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("Chapter \(index + 1)")
+                            Text("Chapter \(entry.offset + 1)")
                                 .font(.headline)
-                            Text(chapter.title)
+                            Text(entry.element.title)
                                 .font(.title3.weight(.medium))
                                 .lineLimit(2)
-                            Text(chapter.timeRangeLabel)
+                            Text(entry.element.timeRangeLabel)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
