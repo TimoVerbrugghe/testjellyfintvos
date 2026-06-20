@@ -110,7 +110,7 @@ final class JellyfinPlayerViewModel: ObservableObject {
         item.value = value as NSString
         item.extendedLanguageTag = "und"
         guard let copiedItem = item.copy() as? AVMetadataItem else {
-            preconditionFailure("Failed to create metadata item for \(identifier.rawValue). This indicates an unexpected AVFoundation invariant violation while preparing player metadata.")
+            preconditionFailure("Failed to create metadata item for \(identifier.rawValue). Check the playback presentation metadata being passed into JellyfinPlaybackView and retry.")
         }
 
         return copiedItem
