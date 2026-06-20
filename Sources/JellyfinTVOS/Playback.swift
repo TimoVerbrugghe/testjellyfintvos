@@ -1,0 +1,272 @@
+import Foundation
+
+public struct JellyfinItem: Codable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let type: JellyfinItemType
+    public let mediaSources: [MediaSource]
+
+    public init(id: String, name: String, type: JellyfinItemType, mediaSources: [MediaSource]) {
+        self.id = id
+        self.name = name
+        self.type = type
+        self.mediaSources = mediaSources
+    }
+}
+
+public enum JellyfinItemType: String, Codable, Sendable {
+    case movie = "Movie"
+    case episode = "Episode"
+    case series = "Series"
+}
+
+public struct MediaSource: Codable, Equatable, Sendable {
+    public let id: String
+    public let container: String
+    public let videoCodec: String
+    public let videoRange: VideoRange
+    public let supportsDirectPlay: Bool
+    public let subtitleStreams: [SubtitleStream]
+
+    public init(
+        id: String,
+        container: String,
+        videoCodec: String,
+        videoRange: VideoRange,
+        supportsDirectPlay: Bool,
+        subtitleStreams: [SubtitleStream]
+    ) {
+        self.id = id
+        self.container = container
+        self.videoCodec = videoCodec
+        self.videoRange = videoRange
+        self.supportsDirectPlay = supportsDirectPlay
+        self.subtitleStreams = subtitleStreams
+    }
+}
+
+public enum VideoRange: String, Codable, CaseIterable, Sendable {
+    case sdr = "SDR"
+    case hdr10 = "HDR10"
+    case dolbyVisionProfile5 = "DOVIProfile5"
+    case dolbyVisionProfile8 = "DOVIProfile8"
+}
+
+public struct SubtitleStream: Codable, Equatable, Sendable {
+    public let index: Int
+    public let codec: SubtitleCodec
+    public let languageCode: String
+    public let isDefault: Bool
+    public let isForced: Bool
+    public let isSDH: Bool
+    public let isExternal: Bool
+
+    public init(
+        index: Int,
+        codec: SubtitleCodec,
+        languageCode: String,
+        isDefault: Bool = false,
+        isForced: Bool = false,
+        isSDH: Bool = false,
+        isExternal: Bool = false
+    ) {
+        self.index = index
+        self.codec = codec
+        self.languageCode = languageCode
+        self.isDefault = isDefault
+        self.isForced = isForced
+        self.isSDH = isSDH
+        self.isExternal = isExternal
+    }
+}
+
+public enum SubtitleCodec: String, Codable, CaseIterable, Sendable {
+    case ass
+    case srt
+    case subrip
+    case webvtt
+    case subgen
+}
+
+public struct SubtitlePreferences: Equatable, Sendable {
+    public let preferredLanguages: [String]
+    public let prefersSDH: Bool
+    public let prefersASS: Bool
+    public let prefersSubgen: Bool
+
+    public init(
+        preferredLanguages: [String] = ["en"],
+        prefersSDH: Bool = true,
+        prefersASS: Bool = true,
+        prefersSubgen: Bool = true
+    ) {
+        self.preferredLanguages = preferredLanguages
+        self.prefersSDH = prefersSDH
+        self.prefersASS = prefersASS
+        self.prefersSubgen = prefersSubgen
+    }
+
+    public func selectSubtitle(from streams: [SubtitleStream]) -> SubtitleStream? {
+        streams.max { score(for: $0) < score(for: $1) }
+    }
+
+    private func score(for stream: SubtitleStream) -> Int {
+        var score = stream.isDefault ? 5 : 0
+
+        if let languageIndex = preferredLanguages.firstIndex(of: stream.languageCode) {
+            score += 100 - languageIndex
+        }
+
+        if stream.isForced {
+            score += 2
+        }
+
+        if prefersSDH && stream.isSDH {
+            score += 20
+        }
+
+        if prefersASS && stream.codec == .ass {
+            score += 15
+        }
+
+        if prefersSubgen && stream.codec == .subgen {
+            score += 10
+        }
+
+        if stream.isExternal {
+            score += 1
+        }
+
+        return score
+    }
+}
+
+public struct PlaybackProfile: Equatable, Sendable {
+    public let supportedVideoRanges: Set<VideoRange>
+    public let supportedSubtitleCodecs: Set<SubtitleCodec>
+    public let maximumBitrate: Int
+    public let supportsTranscoding: Bool
+
+    public init(
+        supportedVideoRanges: Set<VideoRange>,
+        supportedSubtitleCodecs: Set<SubtitleCodec>,
+        maximumBitrate: Int,
+        supportsTranscoding: Bool
+    ) {
+        self.supportedVideoRanges = supportedVideoRanges
+        self.supportedSubtitleCodecs = supportedSubtitleCodecs
+        self.maximumBitrate = maximumBitrate
+        self.supportsTranscoding = supportsTranscoding
+    }
+
+    public static let nativeTVOS = PlaybackProfile(
+        supportedVideoRanges: [.sdr, .hdr10, .dolbyVisionProfile5, .dolbyVisionProfile8],
+        supportedSubtitleCodecs: [.ass, .srt, .subrip, .webvtt, .subgen],
+        maximumBitrate: 120_000_000,
+        supportsTranscoding: true
+    )
+
+    public var deviceProfile: DeviceProfile {
+        DeviceProfile(
+            name: JellyfinTVOS.deviceName,
+            maxStreamingBitrate: maximumBitrate,
+            supportedVideoRanges: supportedVideoRanges.map(\.rawValue).sorted(),
+            supportedSubtitleCodecs: supportedSubtitleCodecs.map(\.rawValue).sorted(),
+            supportsTranscoding: supportsTranscoding
+        )
+    }
+
+    public func supportsDirectPlay(of mediaSource: MediaSource, subtitle: SubtitleStream?) -> Bool {
+        guard mediaSource.supportsDirectPlay else {
+            return false
+        }
+
+        guard supportedVideoRanges.contains(mediaSource.videoRange) else {
+            return false
+        }
+
+        guard let subtitle else {
+            return true
+        }
+
+        return supportedSubtitleCodecs.contains(subtitle.codec)
+    }
+}
+
+public struct DeviceProfile: Codable, Equatable, Sendable {
+    public let name: String
+    public let maxStreamingBitrate: Int
+    public let supportedVideoRanges: [String]
+    public let supportedSubtitleCodecs: [String]
+    public let supportsTranscoding: Bool
+}
+
+public struct PlaybackRequest: Equatable, Sendable {
+    public let mode: PlaybackMode
+    public let url: URL
+    public let subtitle: SubtitleStream?
+}
+
+public enum PlaybackMode: String, Equatable, Sendable {
+    case directPlay
+    case transcode
+}
+
+public struct PlaybackRequestBuilder: Sendable {
+    public let client: JellyfinClient
+
+    public init(client: JellyfinClient) {
+        self.client = client
+    }
+
+    public func makeRequest(
+        for item: JellyfinItem,
+        profile: PlaybackProfile = .nativeTVOS,
+        subtitlePreferences: SubtitlePreferences = SubtitlePreferences()
+    ) throws -> PlaybackRequest {
+        guard let mediaSource = item.mediaSources.first else {
+            throw JellyfinClientError.missingMediaSource
+        }
+
+        let subtitle = subtitlePreferences.selectSubtitle(from: mediaSource.subtitleStreams)
+
+        if profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle) {
+            return PlaybackRequest(
+                mode: .directPlay,
+                url: try client.makeURL(
+                    for: .directStream(item.id),
+                    queryItems: [
+                        URLQueryItem(name: "mediaSourceId", value: mediaSource.id),
+                        URLQueryItem(name: "static", value: "true"),
+                        URLQueryItem(name: "api_key", value: client.session.accessToken)
+                    ]
+                ),
+                subtitle: subtitle
+            )
+        }
+
+        var queryItems = [
+            URLQueryItem(name: "mediaSourceId", value: mediaSource.id),
+            URLQueryItem(name: "VideoCodec", value: "hevc,h264"),
+            URLQueryItem(name: "AudioCodec", value: "aac,ac3,eac3"),
+            URLQueryItem(name: "MaxStreamingBitrate", value: String(profile.maximumBitrate)),
+            URLQueryItem(name: "api_key", value: client.session.accessToken)
+        ]
+
+        if let subtitle {
+            queryItems.append(URLQueryItem(name: "SubtitleStreamIndex", value: String(subtitle.index)))
+            queryItems.append(
+                URLQueryItem(
+                    name: "SubtitleMethod",
+                    value: subtitle.codec == .subgen ? "External" : "Encode"
+                )
+            )
+        }
+
+        return PlaybackRequest(
+            mode: .transcode,
+            url: try client.makeURL(for: .transcodedStream(item.id), queryItems: queryItems),
+            subtitle: subtitle
+        )
+    }
+}
