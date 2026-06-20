@@ -2,18 +2,27 @@
 import AVKit
 import SwiftUI
 
+@MainActor
+final class JellyfinPlayerViewModel: ObservableObject {
+    let player: AVPlayer
+
+    init(request: PlaybackRequest) {
+        self.player = AVPlayer(url: request.url)
+    }
+}
+
 public struct JellyfinPlaybackView: View {
-    @State private var player: AVPlayer
+    @StateObject private var model: JellyfinPlayerViewModel
 
     public init(request: PlaybackRequest) {
-        _player = State(initialValue: AVPlayer(url: request.url))
+        _model = StateObject(wrappedValue: JellyfinPlayerViewModel(request: request))
     }
 
     public var body: some View {
-        VideoPlayer(player: player)
+        VideoPlayer(player: model.player)
             .ignoresSafeArea()
-            .onAppear { player.play() }
-            .onDisappear { player.pause() }
+            .onAppear { model.player.play() }
+            .onDisappear { model.player.pause() }
     }
 }
 #endif
