@@ -201,10 +201,86 @@ public struct DeviceProfile: Codable, Equatable, Sendable {
     public let supportsTranscoding: Bool
 }
 
+public struct PlaybackContributor: Equatable, Sendable {
+    public let name: String
+    public let role: String
+
+    public init(name: String, role: String) {
+        self.name = name
+        self.role = role
+    }
+}
+
+public struct PlaybackChapter: Equatable, Sendable {
+    public let title: String
+    public let startTime: TimeInterval
+    public let endTime: TimeInterval?
+
+    public init(title: String, startTime: TimeInterval, endTime: TimeInterval? = nil) {
+        self.title = title
+        self.startTime = startTime
+        self.endTime = endTime
+    }
+}
+
+public struct DialogueOptions: Equatable, Sendable {
+    public let isAvailable: Bool
+    public let isEnabledByDefault: Bool
+
+    public init(isAvailable: Bool = false, isEnabledByDefault: Bool = false) {
+        self.isAvailable = isAvailable
+        self.isEnabledByDefault = isEnabledByDefault
+    }
+}
+
+public struct PlaybackPresentation: Equatable, Sendable {
+    public let title: String
+    public let subtitle: String?
+    public let overview: String?
+    public let badges: [String]
+    public let castAndCrew: [PlaybackContributor]
+    public let chapters: [PlaybackChapter]
+    public let dialogueOptions: DialogueOptions
+
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        overview: String? = nil,
+        badges: [String] = [],
+        castAndCrew: [PlaybackContributor] = [],
+        chapters: [PlaybackChapter] = [],
+        dialogueOptions: DialogueOptions = DialogueOptions()
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.overview = overview
+        self.badges = badges
+        self.castAndCrew = castAndCrew
+        self.chapters = chapters
+        self.dialogueOptions = dialogueOptions
+    }
+}
+
 public struct PlaybackRequest: Equatable, Sendable {
     public let mode: PlaybackMode
     public let url: URL
     public let subtitle: SubtitleStream?
+    public let availableSubtitles: [SubtitleStream]
+    public let presentation: PlaybackPresentation
+
+    public init(
+        mode: PlaybackMode,
+        url: URL,
+        subtitle: SubtitleStream? = nil,
+        availableSubtitles: [SubtitleStream] = [],
+        presentation: PlaybackPresentation
+    ) {
+        self.mode = mode
+        self.url = url
+        self.subtitle = subtitle
+        self.availableSubtitles = availableSubtitles
+        self.presentation = presentation
+    }
 }
 
 public enum PlaybackMode: String, Equatable, Sendable {
@@ -234,6 +310,11 @@ public struct PlaybackRequestBuilder: Sendable {
 
         let mediaSource = candidate.mediaSource
         let subtitle = candidate.subtitle
+        let presentation = PlaybackPresentation(
+            title: item.name,
+            subtitle: item.type.rawValue,
+            badges: [mediaSource.container.uppercased(), mediaSource.videoRange.rawValue, profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle) ? "Direct Play" : "Transcode"]
+        )
 
         if profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle) {
             return PlaybackRequest(
@@ -246,7 +327,9 @@ public struct PlaybackRequestBuilder: Sendable {
                         URLQueryItem(name: "api_key", value: client.session.accessToken)
                     ]
                 ),
-                subtitle: subtitle
+                subtitle: subtitle,
+                availableSubtitles: mediaSource.subtitleStreams,
+                presentation: presentation
             )
         }
 
@@ -271,7 +354,9 @@ public struct PlaybackRequestBuilder: Sendable {
         return PlaybackRequest(
             mode: .transcode,
             url: try client.makeURL(for: .transcodedStream(item.id), queryItems: queryItems),
-            subtitle: subtitle
+            subtitle: subtitle,
+            availableSubtitles: mediaSource.subtitleStreams,
+            presentation: presentation
         )
     }
 

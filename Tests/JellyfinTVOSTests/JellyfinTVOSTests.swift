@@ -57,6 +57,10 @@ import Testing
     #expect(request.url.absoluteString.contains("/Videos/item-1/stream"))
     #expect(request.url.query?.contains("static=true") == true)
     #expect(request.subtitle?.codec == .ass)
+    #expect(request.availableSubtitles.map(\.index) == [3])
+    #expect(request.presentation.title == "Movie")
+    #expect(request.presentation.subtitle == "Movie")
+    #expect(request.presentation.badges.contains("Direct Play"))
 }
 
 @Test func transcodingFallsBackForUnsupportedVideoRangeAndUsesSubgenExternally() async throws {
@@ -82,6 +86,7 @@ import Testing
     #expect(request.mode == .transcode)
     #expect(request.url.absoluteString.contains("/Videos/item-2/master.m3u8"))
     #expect(request.url.query?.contains("SubtitleMethod=External") == true)
+    #expect(request.presentation.badges.contains("Transcode"))
 }
 
 @Test func playbackPrefersBestDirectPlayableMediaSource() async throws {
