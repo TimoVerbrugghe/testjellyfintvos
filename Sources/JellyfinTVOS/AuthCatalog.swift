@@ -81,13 +81,13 @@ public struct JellyfinSeason: Codable, Equatable, Sendable {
 public struct JellyfinEpisode: Codable, Equatable, Sendable {
     public let id: String
     public let name: String
-    public let parentSeasonID: String?
+    public let seasonID: String?
     public let indexNumber: Int?
 
-    public init(id: String, name: String, parentSeasonID: String? = nil, indexNumber: Int? = nil) {
+    public init(id: String, name: String, seasonID: String? = nil, indexNumber: Int? = nil) {
         self.id = id
         self.name = name
-        self.parentSeasonID = parentSeasonID
+        self.seasonID = seasonID
         self.indexNumber = indexNumber
     }
 }
@@ -259,13 +259,26 @@ public struct JellyfinCatalogClient: Sendable {
     ) -> LibrarySelection {
         switch item.type {
         case .movie, .episode:
-            .readyToPlay(item.id)
+            return LibrarySelection.readyToPlay(item.id)
         case .series:
-            if let firstEpisode = episodes.sorted(by: episodeSort(lhs:rhs:)).first {
-                return .episodeList(seriesID: item.id, seasonID: firstEpisode.parentSeasonID, episodes: episodes.sorted(by: episodeSort(lhs:rhs:)))
+            let sortedEpisodes = episodes.sorted { lhs, rhs in
+                episodeSort(lhs: lhs, rhs: rhs)
             }
 
-            return .seasonList(seriesID: item.id, seasons: seasons.sorted(by: seasonSort(lhs:rhs:)))
+            if let firstEpisode = sortedEpisodes.first {
+                return LibrarySelection.episodeList(
+                    seriesID: item.id,
+                    seasonID: firstEpisode.seasonID,
+                    episodes: sortedEpisodes
+                )
+            }
+
+            return LibrarySelection.seasonList(
+                seriesID: item.id,
+                seasons: seasons.sorted { lhs, rhs in
+                    seasonSort(lhs: lhs, rhs: rhs)
+                }
+            )
         }
     }
 
@@ -338,7 +351,7 @@ extension JellyfinEpisode {
     private enum CodingKeys: String, CodingKey {
         case id = "Id"
         case name = "Name"
-        case parentSeasonID = "ParentIndexNumber"
+        case seasonID = "SeasonId"
         case indexNumber = "IndexNumber"
     }
 }

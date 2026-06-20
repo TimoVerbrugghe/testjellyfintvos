@@ -4,11 +4,12 @@ Native tvOS building blocks for a Jellyfin client that uses AVPlayer for playbac
 
 ## Included
 
-- Jellyfin request/authentication helpers for server, library, and playback endpoints
+- Jellyfin sign-in request builders for server discovery validation, username/password auth, and Quick Connect
+- Jellyfin catalog request builders for loading libraries, series seasons, and season episodes
 - A playback profile that advertises Dolby Vision profile 5 and 8 support
 - Subtitle selection logic for SDH, ASS, and Subgen subtitle streams
 - Direct play vs. transcoding request generation for Jellyfin playback
-- A tvOS-only `JellyfinPlaybackView` that wraps native `AVPlayer`
+- tvOS-only SwiftUI browser and playback views that wrap native `AVPlayer`
 
 ## Validation
 

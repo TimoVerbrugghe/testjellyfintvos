@@ -40,9 +40,12 @@ public struct JellyfinClient: Sendable {
     public enum Endpoint: Equatable, Sendable {
         case authenticateByName
         case userViews(String)
+        case userItems(String)
         case latest(userID: String)
         case item(String)
         case playbackInfo(String)
+        case showSeasons(String)
+        case showEpisodes(String)
         case directStream(String)
         case transcodedStream(String)
     }
@@ -107,12 +110,18 @@ private extension JellyfinClient.Endpoint {
             "/Users/AuthenticateByName"
         case .userViews(let userID):
             "/Users/\(userID)/Views"
+        case .userItems(let userID):
+            "/Users/\(userID)/Items"
         case .latest(let userID):
             "/Users/\(userID)/Items/Latest"
         case .item(let itemID):
             "/Items/\(itemID)"
         case .playbackInfo(let itemID):
             "/Items/\(itemID)/PlaybackInfo"
+        case .showSeasons(let seriesID):
+            "/Shows/\(seriesID)/Seasons"
+        case .showEpisodes(let seriesID):
+            "/Shows/\(seriesID)/Episodes"
         case .directStream(let itemID):
             "/Videos/\(itemID)/stream"
         case .transcodedStream(let itemID):
@@ -121,7 +130,7 @@ private extension JellyfinClient.Endpoint {
     }
 }
 
-private extension URL {
+extension URL {
     func normalizedJellyfinServerURL() -> URL {
         let value = absoluteString
 
