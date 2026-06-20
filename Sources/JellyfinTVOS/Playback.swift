@@ -313,7 +313,11 @@ public struct PlaybackRequestBuilder: Sendable {
         let presentation = PlaybackPresentation(
             title: item.name,
             subtitle: item.type.rawValue,
-            badges: [mediaSource.container.uppercased(), mediaSource.videoRange.rawValue, profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle) ? "Direct Play" : "Transcode"]
+            badges: makePresentationBadges(
+                for: mediaSource,
+                subtitle: subtitle,
+                profile: profile
+            )
         )
 
         if profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle) {
@@ -387,5 +391,15 @@ public struct PlaybackRequestBuilder: Sendable {
             }
             .first
             .map { ($0.mediaSource, $0.subtitle) }
+    }
+
+    private func makePresentationBadges(
+        for mediaSource: MediaSource,
+        subtitle: SubtitleStream?,
+        profile: PlaybackProfile
+    ) -> [String] {
+        var badges = [mediaSource.container.uppercased(), mediaSource.videoRange.rawValue]
+        badges.append(profile.supportsDirectPlay(of: mediaSource, subtitle: subtitle) ? "Direct Play" : "Transcode")
+        return badges
     }
 }

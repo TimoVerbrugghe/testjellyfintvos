@@ -77,8 +77,6 @@ final class JellyfinPlayerViewModel: ObservableObject {
             items.append(makeMetadataItem(.commonIdentifierDescription, value: overview))
         }
 
-        items.append(makeMetadataItem(.commonIdentifierCreationDate, value: ""))
-
         return items
     }
 
@@ -190,7 +188,7 @@ private struct NativeJellyfinPlayerView: UIViewControllerRepresentable {
     @available(tvOS 16.0, *)
     private func makeSubtitleMenu() -> UIMenu {
         makeMediaSelectionMenu(
-            title: "Subtitle Select",
+        title: "Subtitles",
             systemImageName: "captions.bubble",
             characteristic: .legible,
             emptyStateTitle: model.request.availableSubtitles.isEmpty ? "No subtitles available" : "Subtitle options unavailable"
@@ -200,7 +198,7 @@ private struct NativeJellyfinPlayerView: UIViewControllerRepresentable {
     @available(tvOS 16.0, *)
     private func makeAudioTrackMenu() -> UIMenu {
         makeMediaSelectionMenu(
-            title: "Audio Track Select",
+            title: "Audio",
             systemImageName: "speaker.wave.2",
             characteristic: .audible,
             emptyStateTitle: "No alternate audio tracks available"
