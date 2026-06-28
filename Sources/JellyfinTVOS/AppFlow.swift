@@ -19,13 +19,13 @@ public enum JellyfinSignInMethod: String, CaseIterable, Codable, Identifiable, S
     }
 }
 
-public enum JellyfinLaunchState: Equatable, Sendable {
+public enum JellyfinLaunchState: Codable, Equatable, Sendable {
     case firstLaunch
     case signedOut
     case signedIn
 }
 
-public enum JellyfinOnboardingStep: Equatable, Sendable {
+public enum JellyfinOnboardingStep: Codable, Equatable, Sendable {
     case welcome
     case discoveringServers
     case selectServer
@@ -33,7 +33,7 @@ public enum JellyfinOnboardingStep: Equatable, Sendable {
     case signIn
 }
 
-public enum JellyfinNavigationItem: String, CaseIterable, Identifiable, Sendable {
+public enum JellyfinNavigationItem: String, CaseIterable, Codable, Identifiable, Sendable {
     case home
     case movies
     case tvShows
@@ -58,19 +58,21 @@ public enum JellyfinNavigationItem: String, CaseIterable, Identifiable, Sendable
     }
 }
 
-public struct JellyfinPosterItem: Identifiable, Equatable, Sendable {
+public struct JellyfinPosterItem: Codable, Identifiable, Equatable, Hashable, Sendable {
     public let id: String
     public let title: String
     public let subtitle: String?
+    public let artworkURL: URL?
 
-    public init(id: String, title: String, subtitle: String? = nil) {
+    public init(id: String, title: String, subtitle: String? = nil, artworkURL: URL? = nil) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
+        self.artworkURL = artworkURL
     }
 }
 
-public struct JellyfinHomeSectionContent: Equatable, Sendable {
+public struct JellyfinHomeSectionContent: Codable, Equatable, Sendable {
     public var upNext: [JellyfinPosterItem]
     public var recentlyAddedTVShows: [JellyfinPosterItem]
     public var recentlyAddedMovies: [JellyfinPosterItem]
@@ -86,7 +88,7 @@ public struct JellyfinHomeSectionContent: Equatable, Sendable {
     }
 }
 
-public struct JellyfinPosterSection: Equatable, Sendable {
+public struct JellyfinPosterSection: Codable, Equatable, Sendable {
     public let title: String
     public let items: [JellyfinPosterItem]
 
@@ -96,7 +98,7 @@ public struct JellyfinPosterSection: Equatable, Sendable {
     }
 }
 
-public struct JellyfinPosterCatalog: Equatable, Sendable {
+public struct JellyfinPosterCatalog: Codable, Equatable, Sendable {
     public private(set) var libraryItems: [String: [JellyfinPosterItem]]
 
     public init(libraryItems: [String: [JellyfinPosterItem]] = [:]) {
@@ -112,7 +114,7 @@ public struct JellyfinPosterCatalog: Equatable, Sendable {
     }
 }
 
-public struct JellyfinAppState: Equatable, Sendable {
+public struct JellyfinAppState: Codable, Equatable, Sendable {
     public var launchState: JellyfinLaunchState
     public var onboardingStep: JellyfinOnboardingStep
     public var discoveredServers: [DiscoveredServer]
@@ -131,7 +133,7 @@ public struct JellyfinAppState: Equatable, Sendable {
         discoveredServers: [DiscoveredServer] = [],
         selectedServer: DiscoveredServer? = nil,
         manualServerAddress: String = "",
-        signInMethod: JellyfinSignInMethod = .autodiscovery,
+        signInMethod: JellyfinSignInMethod = .usernamePassword,
         session: JellyfinSession? = nil,
         libraries: [JellyfinLibrary] = [],
         homeContent: JellyfinHomeSectionContent = JellyfinHomeSectionContent(),

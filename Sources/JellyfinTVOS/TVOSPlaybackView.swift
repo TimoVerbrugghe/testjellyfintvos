@@ -175,6 +175,7 @@ private struct NativeJellyfinPlayerView: UIViewControllerRepresentable {
 
         let menuItems = [
             makeSubtitleMenu(),
+            makeSubtitleStyleMenu(),
             makeAudioTrackMenu(),
             makeDialogueMenu()
         ]
@@ -199,6 +200,15 @@ private struct NativeJellyfinPlayerView: UIViewControllerRepresentable {
         emptyStateTitle: model.request.availableSubtitles.isEmpty
             ? "This video has no subtitle tracks"
         : "Subtitle tracks are temporarily unavailable for this stream"
+        )
+    }
+
+    @available(tvOS 16.0, *)
+    private func makeSubtitleStyleMenu() -> UIMenu {
+        UIMenu(
+            title: "Subtitle Style",
+            image: UIImage(systemName: "textformat"),
+            children: [disabledAction(title: "Use tvOS system subtitle style settings")]
         )
     }
 

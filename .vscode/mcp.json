@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "servers": {
+      "apple-docs": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@kimsungwhee/apple-docs-mcp@latest"
+        ]
+      }
+    }
+  }
+}

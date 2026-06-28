@@ -49,6 +49,7 @@ public enum VideoRange: String, Codable, CaseIterable, Sendable {
     case sdr = "SDR"
     case hdr10 = "HDR10"
     case dolbyVisionProfile5 = "DOVIProfile5"
+    case dolbyVisionProfile7 = "DOVIProfile7"
     case dolbyVisionProfile8 = "DOVIProfile8"
 }
 
@@ -162,7 +163,7 @@ public struct PlaybackProfile: Equatable, Sendable {
     }
 
     public static let nativeTVOS = PlaybackProfile(
-        supportedVideoRanges: [.sdr, .hdr10, .dolbyVisionProfile5, .dolbyVisionProfile8],
+        supportedVideoRanges: [.sdr, .hdr10, .dolbyVisionProfile5, .dolbyVisionProfile7, .dolbyVisionProfile8],
         supportedSubtitleCodecs: [.ass, .srt, .subrip, .webvtt, .subgen],
         maximumBitrate: 120_000_000,
         supportsTranscoding: true

@@ -17,6 +17,7 @@ import Testing
     let profile = PlaybackProfile.nativeTVOS
 
     #expect(profile.supportedVideoRanges.contains(.dolbyVisionProfile5))
+    #expect(profile.supportedVideoRanges.contains(.dolbyVisionProfile7))
     #expect(profile.supportedVideoRanges.contains(.dolbyVisionProfile8))
     #expect(profile.supportedSubtitleCodecs.contains(.ass))
     #expect(profile.supportedSubtitleCodecs.contains(.subgen))
@@ -150,10 +151,12 @@ import Testing
 
     let initiate = try signInClient.makeQuickConnectInitiateRequest()
     let authenticate = try signInClient.makeQuickConnectAuthenticateRequest(code: "ABCD")
+    let authenticateWithQuickConnect = try signInClient.makeAuthenticateWithQuickConnectRequest(secret: "secret")
     let connect = try signInClient.makeQuickConnectConnectRequest(secret: "secret")
 
     #expect(initiate.url?.absoluteString == "https://demo.jellyfin.org/QuickConnect/Initiate")
     #expect(authenticate.url?.absoluteString == "https://demo.jellyfin.org/QuickConnect/Authenticate")
+    #expect(authenticateWithQuickConnect.url?.absoluteString == "https://demo.jellyfin.org/Users/AuthenticateWithQuickConnect")
     #expect(connect.url?.absoluteString == "https://demo.jellyfin.org/QuickConnect/Connect?Secret=secret")
 }
 
@@ -259,6 +262,54 @@ import Testing
     )
     #expect(state.launchState == .signedIn)
     #expect(state.visibleNavigationItems == [.home, .movies, .settings])
+}
+
+@Test func appStateRoundTripsCodableForPersistence() async throws {
+    var state = JellyfinAppState(
+        launchState: .signedIn,
+        onboardingStep: .signIn,
+        selectedServer: DiscoveredServer(
+            id: "server-1",
+            name: "Living Room",
+            address: URL(string: "https://jellyfin.example.com")!
+        ),
+        manualServerAddress: "https://jellyfin.example.com",
+        signInMethod: .quickConnect,
+        session: JellyfinSession(
+            accessToken: "token-1",
+            userID: "user-1",
+            deviceID: "device-1"
+        ),
+        libraries: [
+            JellyfinLibrary(id: "movies", name: "Movies", collectionType: .movies)
+        ],
+        homeContent: JellyfinHomeSectionContent(
+            upNext: [
+                JellyfinPosterItem(
+                    id: "resume-1",
+                    title: "Pilot",
+                    subtitle: "Great Show",
+                    artworkURL: URL(string: "https://jellyfin.example.com/Items/resume-1/Images/Primary")!
+                )
+            ]
+        ),
+        selectedNavigationItem: .movies
+    )
+    state.setPosterItems(
+        [
+            JellyfinPosterItem(
+                id: "movie-1",
+                title: "Arrival",
+                artworkURL: URL(string: "https://jellyfin.example.com/Items/movie-1/Images/Primary")!
+            )
+        ],
+        for: "movies"
+    )
+
+    let encoded = try JSONEncoder().encode(state)
+    let decoded = try JSONDecoder().decode(JellyfinAppState.self, from: encoded)
+
+    #expect(decoded == state)
 }
 
 @Test func libraryFilteringRecognizesMusicLibraries() async throws {
@@ -375,8 +426,11 @@ import Testing
     #expect(content.homeContent.upNext.map(\.title) == ["Pilot"])
     #expect(content.homeContent.recentlyAddedTVShows.map(\.title) == ["Great Show"])
     #expect(content.homeContent.recentlyAddedMovies.first?.subtitle == "2024")
+    #expect(content.homeContent.upNext.first?.artworkURL?.absoluteString.contains("/Items/resume-1/Images/Primary") == true)
+    #expect(content.homeContent.upNext.first?.artworkURL?.absoluteString.contains("api_key=token-1") == true)
     #expect(content.posterCatalog.items(for: "movies").map(\.title) == ["Arrival"])
     #expect(content.posterCatalog.items(for: "shows").map(\.title) == ["Severance"])
+    #expect(content.posterCatalog.items(for: "movies").first?.artworkURL?.absoluteString.contains("/Items/movie-a/Images/Primary") == true)
 }
 
 @Test func quickConnectPollingRetriesPendingResponses() async throws {
@@ -413,7 +467,7 @@ import Testing
     let code = try await service.beginQuickConnect(server: server, deviceID: "device-1")
     let session = try await service.completeQuickConnect(
         server: server,
-        secret: code.secret,
+        quickConnectCode: code,
         deviceID: "device-1",
         pollIntervalNanoseconds: 1,
         maxAttempts: 3
@@ -421,6 +475,58 @@ import Testing
 
     #expect(code.code == "ABCD")
     #expect(session.accessToken == "token-quick")
+    #expect(await responder.requestCount(for: connectURL) == 2)
+}
+
+@Test func quickConnectAuthenticate404ContinuesPolling() async throws {
+    let baseURL = "https://jellyfin.example.com"
+    let connectURL = "\(baseURL)/QuickConnect/Connect?Secret=secret-1"
+    let authenticateURL = "\(baseURL)/Users/AuthenticateWithQuickConnect"
+    let responder = MockHTTPResponder(
+        responses: [
+            "\(baseURL)/QuickConnect/Initiate": [
+                makeJSONResponse(
+                    url: "\(baseURL)/QuickConnect/Initiate",
+                    body: #"{"Code":"ABCD","Secret":"secret-1"}"#
+                )
+            ],
+            connectURL: [
+                makeJSONResponse(
+                    url: connectURL,
+                    body: #"{"Authenticated":true}"#
+                ),
+                makeJSONResponse(
+                    url: connectURL,
+                    body: #"{"AccessToken":"token-quick","User":{"Id":"user-quick"}}"#
+                )
+            ],
+            authenticateURL: [
+                makeStatusResponse(url: authenticateURL, statusCode: 404)
+            ]
+        ]
+    )
+    let service = JellyfinLiveService(
+        transport: JellyfinHTTPTransport { request in
+            try await responder.send(request)
+        }
+    )
+    let server = DiscoveredServer(
+        id: baseURL,
+        name: "Jellyfin",
+        address: URL(string: baseURL)!
+    )
+
+    let code = try await service.beginQuickConnect(server: server, deviceID: "device-1")
+    let session = try await service.completeQuickConnect(
+        server: server,
+        quickConnectCode: code,
+        deviceID: "device-1",
+        pollIntervalNanoseconds: 1,
+        maxAttempts: 3
+    )
+
+    #expect(session.accessToken == "token-quick")
+    #expect(await responder.requestCount(for: authenticateURL) == 1)
     #expect(await responder.requestCount(for: connectURL) == 2)
 }
 

@@ -166,6 +166,16 @@ public struct JellyfinSignInClient: Sendable {
         return request
     }
 
+    public func makeAuthenticateWithQuickConnectRequest(secret: String) throws -> URLRequest {
+        var request = URLRequest(url: try makeURL(path: "/Users/AuthenticateWithQuickConnect"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(anonymousAuthorizationHeader, forHTTPHeaderField: "X-Emby-Authorization")
+        request.httpBody = try JSONEncoder().encode(["Secret": secret])
+        return request
+    }
+
     public func makeQuickConnectConnectRequest(secret: String) throws -> URLRequest {
         var request = URLRequest(
             url: try makeURL(

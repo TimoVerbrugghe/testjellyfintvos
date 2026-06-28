@@ -11,7 +11,7 @@ public struct JellyfinServer: Equatable, Sendable {
     }
 }
 
-public struct JellyfinSession: Equatable, Sendable {
+public struct JellyfinSession: Codable, Equatable, Sendable {
     public let accessToken: String
     public let userID: String
     public let deviceID: String

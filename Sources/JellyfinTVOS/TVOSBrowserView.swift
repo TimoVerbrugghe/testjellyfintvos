@@ -3,7 +3,11 @@ import SwiftUI
 
 @MainActor
 public final class JellyfinAppModel: ObservableObject {
-    @Published public var appState: JellyfinAppState
+    @Published public var appState: JellyfinAppState {
+        didSet {
+            appStateStore?.saveState(appState)
+        }
+    }
     @Published public var playbackErrorMessage: String?
     @Published public private(set) var isWorking = false
     @Published public private(set) var isPollingQuickConnect = false
@@ -12,6 +16,7 @@ public final class JellyfinAppModel: ObservableObject {
     private let catalogClient: JellyfinCatalogClient
     private let playbackBuilder: PlaybackRequestBuilder
     private let liveService: JellyfinLiveService
+    private let appStateStore: JellyfinAppStateStore?
     private let deviceID: String
     private let appVersion: String
     private var quickConnectTask: Task<Void, Never>?
@@ -21,6 +26,7 @@ public final class JellyfinAppModel: ObservableObject {
         playbackBuilder: PlaybackRequestBuilder,
         appState: JellyfinAppState = JellyfinAppState(),
         liveService: JellyfinLiveService = JellyfinLiveService(),
+        appStateStore: JellyfinAppStateStore? = nil,
         deviceID: String? = nil,
         appVersion: String = JellyfinTVOS.appVersion
     ) {
@@ -28,16 +34,33 @@ public final class JellyfinAppModel: ObservableObject {
         self.playbackBuilder = playbackBuilder
         self.appState = appState
         self.liveService = liveService
+        self.appStateStore = appStateStore
         self.deviceID = deviceID ?? playbackBuilder.client.session.deviceID
         self.appVersion = appVersion
+        self.appStateStore?.startSync { [weak self] syncedState in
+            guard let self, self.appState != syncedState else {
+                return
+            }
+            self.appState = syncedState
+        }
+        self.appStateStore?.saveState(self.appState)
     }
 
     deinit {
         quickConnectTask?.cancel()
     }
 
-    public func beginDiscovery() {
+    public func beginDiscovery() async {
         appState.beginDiscovery()
+        isWorking = true
+        defer { isWorking = false }
+
+        let discoveredServers = await liveService.discoverServers()
+        appState.applyDiscoveredServers(discoveredServers)
+
+        if discoveredServers.isEmpty {
+            playbackErrorMessage = "No Jellyfin servers were discovered automatically. Enter your server URL manually or try discovery again."
+        }
     }
 
     public func applyDiscoveredServers(_ servers: [DiscoveredServer], preferredHost: String? = nil) {
@@ -137,7 +160,7 @@ public final class JellyfinAppModel: ObservableObject {
                 do {
                     let session = try await self.liveService.completeQuickConnect(
                         server: server,
-                        secret: code.secret,
+                        quickConnectCode: code,
                         deviceID: self.deviceID,
                         appVersion: self.appVersion
                     )
@@ -276,7 +299,9 @@ private struct WelcomeScreen: View {
 
             HStack(spacing: 24) {
                 Button("Search for Servers") {
-                    model.beginDiscovery()
+                    Task {
+                        await model.beginDiscovery()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -303,12 +328,12 @@ private struct DiscoveringServersScreen: View {
             Text("Searching for Jellyfin servers on your network.")
                 .font(.title2)
 
-            if !model.appState.discoveredServers.isEmpty {
-                Button("Review Discovered Servers") {
-                    model.applyDiscoveredServers(model.appState.discoveredServers)
+            Button("Search Again") {
+                Task {
+                    await model.beginDiscovery()
                 }
-                .buttonStyle(.borderedProminent)
             }
+            .buttonStyle(.borderedProminent)
 
             Button("Enter Server URL Manually") {
                 model.showManualServerEntry()
@@ -332,13 +357,9 @@ private struct ServerSelectionScreen: View {
                     Button {
                         model.selectServer(server)
                     } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(server.name)
-                            Text(server.address.absoluteString)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                        ServerSelectionRow(server: server)
                     }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -349,6 +370,21 @@ private struct ServerSelectionScreen: View {
             }
         }
         .navigationTitle("Choose Server")
+    }
+}
+
+private struct ServerSelectionRow: View {
+    let server: DiscoveredServer
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(server.name)
+                .foregroundStyle(isFocused ? Color.black : Color.primary)
+            Text(server.address.absoluteString)
+                .font(.footnote)
+                .foregroundStyle(isFocused ? Color.black.opacity(0.75) : Color.secondary)
+        }
     }
 }
 
@@ -387,6 +423,7 @@ private struct SignInScreen: View {
     @ObservedObject var model: JellyfinAppModel
     @State private var username = ""
     @State private var password = ""
+    private let availableMethods: [JellyfinSignInMethod] = [.usernamePassword, .quickConnect]
 
     var body: some View {
         Form {
@@ -397,15 +434,9 @@ private struct SignInScreen: View {
             }
 
             Section("Sign In") {
-                Picker(
-                    "Method",
-                    selection: Binding(
-                        get: { model.appState.signInMethod },
-                        set: model.updateSignInMethod
-                    )
-                ) {
-                    ForEach(JellyfinSignInMethod.allCases) { method in
-                        Text(method.title).tag(method)
+                HStack(spacing: 18) {
+                    ForEach(availableMethods) { method in
+                        signInMethodButton(method)
                     }
                 }
 
@@ -469,9 +500,22 @@ private struct SignInScreen: View {
 
         switch model.appState.signInMethod {
         case .autodiscovery, .usernamePassword:
-            username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty
+            return username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty
         case .quickConnect:
-            false
+            return false
+        }
+    }
+
+    @ViewBuilder
+    private func signInMethodButton(_ method: JellyfinSignInMethod) -> some View {
+        let button = Button(method.title) {
+            model.updateSignInMethod(method)
+        }
+
+        if model.appState.signInMethod == method {
+            button.buttonStyle(.borderedProminent)
+        } else {
+            button.buttonStyle(.bordered)
         }
     }
 }
@@ -542,6 +586,9 @@ private struct HomeScreen: View {
                 .padding(.vertical, 40)
             }
             .navigationTitle("Home")
+            .navigationDestination(for: JellyfinPosterItem.self) { item in
+                PosterDetailsPlaceholderView(item: item)
+            }
         }
     }
 }
@@ -561,7 +608,7 @@ private struct HomeRailSection: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 28) {
                         ForEach(items) { item in
-                            PosterCardView(item: item)
+                            PosterTileLink(item: item)
                         }
                     }
                 }
@@ -591,6 +638,9 @@ private struct LibraryHubScreen: View {
                 .padding(.vertical, 40)
             }
             .navigationTitle(title)
+            .navigationDestination(for: JellyfinPosterItem.self) { item in
+                PosterDetailsPlaceholderView(item: item)
+            }
         }
     }
 }
@@ -636,7 +686,7 @@ private struct IndexedPosterBrowserView: View {
                                         spacing: 22
                                     ) {
                                         ForEach(section.items) { item in
-                                            PosterCardView(item: item)
+                                            PosterTileLink(item: item)
                                         }
                                     }
                                 }
@@ -651,7 +701,7 @@ private struct IndexedPosterBrowserView: View {
                                     proxy.scrollTo(section.title, anchor: .top)
                                 }
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.plain)
                             .font(.caption.bold())
                         }
                     }
@@ -659,6 +709,17 @@ private struct IndexedPosterBrowserView: View {
                 }
             }
         }
+    }
+}
+
+private struct PosterTileLink: View {
+    let item: JellyfinPosterItem
+
+    var body: some View {
+        NavigationLink(value: item) {
+            PosterCardView(item: item)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -700,30 +761,96 @@ private struct SettingsScreen: View {
 
 private struct PosterCardView: View {
     let item: JellyfinPosterItem
+    @Environment(\.isFocused) private var isFocused
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            RoundedRectangle(cornerRadius: 18)
-                .fill(.quaternary)
+            PosterArtworkView(item: item)
                 .frame(width: 220, height: 320)
                 .overlay {
-                    Image(systemName: "film")
-                        .font(.system(size: 50))
-                        .foregroundStyle(.secondary)
+                    RoundedRectangle(cornerRadius: 18)
+                        .strokeBorder(.white.opacity(isFocused ? 0.85 : 0), lineWidth: 3)
                 }
 
             Text(item.title)
                 .font(.headline)
                 .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 52, alignment: .topLeading)
 
             if let subtitle = item.subtitle, !subtitle.isEmpty {
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Color.clear
+                    .frame(height: 20)
             }
         }
         .frame(width: 220, alignment: .leading)
+        .padding(.vertical, 8)
+        .scaleEffect(isFocused ? 1.04 : 1)
+        .shadow(color: .black.opacity(isFocused ? 0.35 : 0), radius: isFocused ? 16 : 0, y: 10)
+        .zIndex(isFocused ? 1 : 0)
+        .animation(.easeOut(duration: 0.16), value: isFocused)
+    }
+}
+
+private struct PosterArtworkView: View {
+    let item: JellyfinPosterItem
+
+    var body: some View {
+        Group {
+            if let artworkURL = item.artworkURL {
+                AsyncImage(url: artworkURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 18)
+            .fill(.quaternary)
+            .overlay {
+                Image(systemName: "film")
+                    .font(.system(size: 50))
+                    .foregroundStyle(.secondary)
+            }
+    }
+}
+
+private struct PosterDetailsPlaceholderView: View {
+    let item: JellyfinPosterItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(item.title)
+                .font(.largeTitle.bold())
+            if let subtitle = item.subtitle {
+                Text(subtitle)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Detail playback screen is next.")
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(60)
+        .navigationTitle("Details")
     }
 }
 
